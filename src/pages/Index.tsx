@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import Icon from '@/components/ui/icon';
+import { api } from '@/config/api';
 
 type UserRole = 'buyer' | 'operator' | 'supplier';
 
@@ -28,6 +29,14 @@ const Index = () => {
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [newStatus, setNewStatus] = useState('');
+  const [products, setProducts] = useState<any[]>([]);
+  const [orders, setOrders] = useState<any[]>([]);
+  const [receipts, setReceipts] = useState<any[]>([]);
+  const [shipments, setShipments] = useState<any[]>([]);
+  const [warehouseZones, setWarehouseZones] = useState<any[]>([]);
+  const [contractors, setContractors] = useState<any[]>([]);
+  const [stats, setStats] = useState<any>({});
+  const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
   const [registerForm, setRegisterForm] = useState({
@@ -59,6 +68,38 @@ const Index = () => {
     }
   }, []);
 
+  useEffect(() => {
+    if (isLoggedIn) {
+      loadData();
+    }
+  }, [isLoggedIn, activeTab]);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [productsData, ordersData, receiptsData, shipmentsData, zonesData, contractorsData, statsData] = await Promise.all([
+        api.get('products'),
+        api.get('orders'),
+        api.get('receipts'),
+        api.get('shipments'),
+        api.get('warehouse_zones'),
+        api.get('contractors'),
+        api.get('stats')
+      ]);
+      setProducts(productsData);
+      setOrders(ordersData);
+      setReceipts(receiptsData);
+      setShipments(shipmentsData);
+      setWarehouseZones(zonesData);
+      setContractors(contractorsData);
+      setStats(statsData);
+    } catch (error) {
+      console.error('Ошибка загрузки данных:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
     const user: User = {
@@ -77,33 +118,83 @@ const Index = () => {
     setIsLoggedIn(false);
   };
 
-  const handleCreateOrder = (e: React.FormEvent) => {
+  const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
-    toast({
-      title: "Заказ создан",
-      description: `Заказ на ${orderForm.quantity} шт. товара "${orderForm.product}" успешно оформлен`,
-    });
-    setShowOrderModal(false);
-    setOrderForm({ product: '', quantity: '', notes: '' });
+    try {
+      await api.post('order', {
+        product_id: selectedItem?.id,
+        quantity: parseInt(orderForm.quantity),
+        price: selectedItem?.price,
+        notes: orderForm.notes
+      });
+      toast({
+        title: "Заказ создан",
+        description: `Заказ на ${orderForm.quantity} шт. товара "${orderForm.product}" успешно оформлен`,
+      });
+      setShowOrderModal(false);
+      setOrderForm({ product: '', quantity: '', notes: '' });
+      loadData();
+    } catch (error) {
+      toast({
+        title: "Ошибка",
+        description: "Не удалось создать заказ",
+        variant: "destructive"
+      });
+    }
   };
 
-  const handleCreateSupply = (e: React.FormEvent) => {
+  const handleCreateSupply = async (e: React.FormEvent) => {
     e.preventDefault();
-    toast({
-      title: "Заявка создана",
-      description: `Заявка на поставку ${supplyForm.quantity} шт. товара "${supplyForm.product}" отправлена`,
-    });
-    setShowSupplyModal(false);
-    setSupplyForm({ product: '', quantity: '', deliveryDate: '', notes: '' });
+    try {
+      await api.post('receipt', {
+        supplier_id: 1,
+        quantity: parseInt(supplyForm.quantity),
+        delivery_date: supplyForm.deliveryDate,
+        notes: supplyForm.notes
+      });
+      toast({
+        title: "Заявка создана",
+        description: `Заявка на поставку ${supplyForm.quantity} шт. товара "${supplyForm.product}" отправлена`,
+      });
+      setShowSupplyModal(false);
+      setSupplyForm({ product: '', quantity: '', deliveryDate: '', notes: '' });
+      loadData();
+    } catch (error) {
+      toast({
+        title: "Ошибка",
+        description: "Не удалось создать заявку",
+        variant: "destructive"
+      });
+    }
   };
 
-  const handleChangeStatus = () => {
-    toast({
-      title: "Статус изменен",
-      description: `Статус изменен на "${newStatus}"`,
-    });
-    setShowStatusModal(false);
-    setNewStatus('');
+  const handleChangeStatus = async () => {
+    try {
+      const pathMap: any = {
+        'order': 'order_status',
+        'receipt': 'receipt_status',
+        'shipment': 'shipment_status'
+      };
+      const path = pathMap[selectedItem?.type] || 'order_status';
+      
+      await api.put(path, {
+        id: selectedItem?.id,
+        status: newStatus
+      });
+      toast({
+        title: "Статус изменен",
+        description: `Статус изменен на "${newStatus}"`,
+      });
+      setShowStatusModal(false);
+      setNewStatus('');
+      loadData();
+    } catch (error) {
+      toast({
+        title: "Ошибка",
+        description: "Не удалось изменить статус",
+        variant: "destructive"
+      });
+    }
   };
 
   const mockData = {
@@ -298,7 +389,12 @@ const Index = () => {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {mockData.stats.map((stat, index) => (
+                {[
+                  { label: 'Товаров на складе', value: stats.products_count || 0, icon: 'Package', change: '+12%' },
+                  { label: 'Активных заказов', value: stats.active_orders || 0, icon: 'ShoppingCart', change: '+8%' },
+                  { label: 'Приёмки сегодня', value: stats.receipts_today || 0, icon: 'TrendingUp', change: '+5%' },
+                  { label: 'Отгрузки сегодня', value: stats.shipments_today || 0, icon: 'TrendingDown', change: '-3%' }
+                ].map((stat, index) => (
                   <Card key={index} className="p-6 hover-scale">
                     <div className="flex items-start justify-between">
                       <div>
@@ -318,11 +414,11 @@ const Index = () => {
                 <Card className="p-6">
                   <h3 className="text-lg font-semibold mb-4">Последние заказы</h3>
                   <div className="space-y-3">
-                    {mockData.orders.slice(0, 3).map((order) => (
+                    {orders.slice(0, 3).map((order) => (
                       <div key={order.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
                         <div>
-                          <p className="font-medium">{order.number}</p>
-                          <p className="text-sm text-muted-foreground">{order.customer}</p>
+                          <p className="font-medium">{order.order_number}</p>
+                          <p className="text-sm text-muted-foreground">{order.customer_name || 'Клиент'}</p>
                         </div>
                         <Badge>{order.status}</Badge>
                       </div>
@@ -333,16 +429,16 @@ const Index = () => {
                 <Card className="p-6">
                   <h3 className="text-lg font-semibold mb-4">Загрузка склада</h3>
                   <div className="space-y-3">
-                    {mockData.warehouse.map((zone, index) => (
+                    {warehouseZones.map((zone, index) => (
                       <div key={index} className="space-y-2">
                         <div className="flex justify-between text-sm">
-                          <span className="font-medium">{zone.zone}</span>
-                          <span className="text-muted-foreground">{zone.capacity}</span>
+                          <span className="font-medium">{zone.zone_name}</span>
+                          <span className="text-muted-foreground">{Math.round((zone.current_items / zone.capacity) * 100)}%</span>
                         </div>
                         <div className="h-2 bg-muted rounded-full overflow-hidden">
                           <div
                             className="h-full bg-primary rounded-full transition-all"
-                            style={{ width: zone.capacity }}
+                            style={{ width: `${Math.round((zone.current_items / zone.capacity) * 100)}%` }}
                           />
                         </div>
                       </div>
@@ -369,7 +465,7 @@ const Index = () => {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {mockData.products.map((product) => (
+                {products.map((product) => (
                   <Card key={product.id} className="p-6 hover-scale">
                     <div className="space-y-3">
                       <div className="flex items-start justify-between">
@@ -377,7 +473,7 @@ const Index = () => {
                           <h3 className="font-semibold text-lg">{product.name}</h3>
                           <p className="text-sm text-muted-foreground">{product.sku}</p>
                         </div>
-                        <Badge variant="outline">{product.category}</Badge>
+                        <Badge variant="outline">{product.category_name}</Badge>
                       </div>
                       <div className="space-y-2">
                         <div className="flex justify-between text-sm">
@@ -395,6 +491,7 @@ const Index = () => {
                       </div>
                       {isBuyer && (
                         <Button className="w-full" onClick={() => {
+                          setSelectedItem(product);
                           setOrderForm({ ...orderForm, product: product.name });
                           setShowOrderModal(true);
                         }}>
@@ -437,21 +534,21 @@ const Index = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {mockData.receipts.map((receipt) => (
+                    {receipts.map((receipt) => (
                       <TableRow key={receipt.id}>
-                        <TableCell className="font-medium">{receipt.number}</TableCell>
-                        <TableCell>{receipt.supplier}</TableCell>
+                        <TableCell className="font-medium">{receipt.receipt_number}</TableCell>
+                        <TableCell>{receipt.supplier_name || 'Поставщик'}</TableCell>
                         <TableCell>
                           <Badge variant={receipt.status === 'Принято' ? 'default' : 'outline'}>
                             {receipt.status}
                           </Badge>
                         </TableCell>
-                        <TableCell>{receipt.items}</TableCell>
-                        <TableCell>{receipt.date}</TableCell>
+                        <TableCell>{receipt.total_items}</TableCell>
+                        <TableCell>{new Date(receipt.created_at).toLocaleDateString()}</TableCell>
                         {canEdit && (
                           <TableCell>
                             <Button variant="ghost" size="sm" onClick={() => {
-                              setSelectedItem(receipt);
+                              setSelectedItem({ ...receipt, type: 'receipt' });
                               setShowStatusModal(true);
                             }}>
                               <Icon name="Edit" size={16} />
@@ -488,19 +585,19 @@ const Index = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {mockData.shipments.map((shipment) => (
+                    {shipments.map((shipment) => (
                       <TableRow key={shipment.id}>
-                        <TableCell className="font-medium">{shipment.number}</TableCell>
-                        <TableCell>{shipment.customer}</TableCell>
+                        <TableCell className="font-medium">{shipment.shipment_number}</TableCell>
+                        <TableCell>{shipment.customer_name || 'Клиент'}</TableCell>
                         <TableCell>
                           <Badge>{shipment.status}</Badge>
                         </TableCell>
-                        <TableCell>{shipment.items}</TableCell>
-                        <TableCell>{shipment.date}</TableCell>
+                        <TableCell>{shipment.total_items}</TableCell>
+                        <TableCell>{new Date(shipment.created_at).toLocaleDateString()}</TableCell>
                         {canEdit && (
                           <TableCell>
                             <Button variant="ghost" size="sm" onClick={() => {
-                              setSelectedItem(shipment);
+                              setSelectedItem({ ...shipment, type: 'shipment' });
                               setShowStatusModal(true);
                             }}>
                               <Icon name="Edit" size={16} />
@@ -523,23 +620,23 @@ const Index = () => {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {mockData.warehouse.map((zone, index) => (
+                {warehouseZones.map((zone, index) => (
                   <Card key={index} className="p-6">
                     <div className="flex items-start justify-between mb-4">
                       <div>
-                        <h3 className="text-lg font-semibold">{zone.zone}</h3>
+                        <h3 className="text-lg font-semibold">{zone.zone_name}</h3>
                         <p className="text-sm text-muted-foreground">{zone.location}</p>
                       </div>
-                      <Badge variant="outline">{zone.capacity}</Badge>
+                      <Badge variant="outline">{Math.round((zone.current_items / zone.capacity) * 100)}%</Badge>
                     </div>
                     <div className="space-y-2">
                       <div className="h-2 bg-muted rounded-full overflow-hidden">
                         <div
                           className="h-full bg-primary rounded-full"
-                          style={{ width: zone.capacity }}
+                          style={{ width: `${Math.round((zone.current_items / zone.capacity) * 100)}%` }}
                         />
                       </div>
-                      <p className="text-sm text-muted-foreground">{zone.items} товаров</p>
+                      <p className="text-sm text-muted-foreground">{zone.current_items} товаров</p>
                     </div>
                   </Card>
                 ))}
@@ -574,10 +671,16 @@ const Index = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {mockData.inventory.map((inv) => (
+                    {mockData.inventory.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center text-muted-foreground">
+                          Данных нет
+                        </TableCell>
+                      </TableRow>
+                    ) : mockData.inventory.map((inv) => (
                       <TableRow key={inv.id}>
-                        <TableCell className="font-medium">{inv.number}</TableCell>
-                        <TableCell>{inv.zone}</TableCell>
+                        <TableCell className="font-medium">{inv.inventory_number}</TableCell>
+                        <TableCell>{inv.zone_name}</TableCell>
                         <TableCell>
                           <Badge variant={inv.status === 'Завершена' ? 'default' : 'outline'}>
                             {inv.status}
@@ -594,7 +697,7 @@ const Index = () => {
                             <span className="text-sm">{inv.progress}%</span>
                           </div>
                         </TableCell>
-                        <TableCell>{inv.date}</TableCell>
+                        <TableCell>{new Date(inv.started_at).toLocaleDateString()}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -625,19 +728,19 @@ const Index = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {mockData.orders.map((order) => (
+                    {orders.map((order) => (
                       <TableRow key={order.id}>
-                        <TableCell className="font-medium">{order.number}</TableCell>
-                        <TableCell>{order.customer}</TableCell>
+                        <TableCell className="font-medium">{order.order_number}</TableCell>
+                        <TableCell>{order.customer_name || 'Клиент'}</TableCell>
                         <TableCell>
                           <Badge>{order.status}</Badge>
                         </TableCell>
-                        <TableCell>{order.items}</TableCell>
-                        <TableCell>{order.date}</TableCell>
+                        <TableCell>{order.total_items}</TableCell>
+                        <TableCell>{new Date(order.created_at).toLocaleDateString()}</TableCell>
                         {canEdit && (
                           <TableCell>
                             <Button variant="ghost" size="sm" onClick={() => {
-                              setSelectedItem(order);
+                              setSelectedItem({ ...order, type: 'order' });
                               setShowStatusModal(true);
                             }}>
                               <Icon name="Edit" size={16} />
@@ -672,14 +775,14 @@ const Index = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {mockData.contractors.map((contractor) => (
+                    {contractors.map((contractor) => (
                       <TableRow key={contractor.id}>
                         <TableCell className="font-medium">{contractor.name}</TableCell>
                         <TableCell>
                           <Badge variant="outline">{contractor.type}</Badge>
                         </TableCell>
                         <TableCell>{contractor.contact}</TableCell>
-                        <TableCell>{contractor.orders}</TableCell>
+                        <TableCell>-</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

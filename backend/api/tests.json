@@ -1,0 +1,22 @@
+{
+  "tests": [
+    {
+      "name": "Получение списка товаров",
+      "method": "GET",
+      "path": "/?path=products",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Получение статистики",
+      "method": "GET",
+      "path": "/?path=stats",
+      "expectedStatus": 200
+    },
+    {
+      "name": "OPTIONS для CORS",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    }
+  ]
+}
