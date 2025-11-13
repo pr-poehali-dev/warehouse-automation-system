@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Textarea } from '@/components/ui/textarea';
+import { useToast } from '@/hooks/use-toast';
 import Icon from '@/components/ui/icon';
 
 type UserRole = 'buyer' | 'operator' | 'supplier';
@@ -21,6 +23,12 @@ const Index = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [showOrderModal, setShowOrderModal] = useState(false);
+  const [showSupplyModal, setShowSupplyModal] = useState(false);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [newStatus, setNewStatus] = useState('');
+  const { toast } = useToast();
 
   const [registerForm, setRegisterForm] = useState({
     name: '',
@@ -29,6 +37,28 @@ const Index = () => {
     role: 'buyer' as UserRole
   });
 
+  const [orderForm, setOrderForm] = useState({
+    product: '',
+    quantity: '',
+    notes: ''
+  });
+
+  const [supplyForm, setSupplyForm] = useState({
+    product: '',
+    quantity: '',
+    deliveryDate: '',
+    notes: ''
+  });
+
+  useEffect(() => {
+    const savedUser = localStorage.getItem('currentUser');
+    if (savedUser) {
+      const user = JSON.parse(savedUser);
+      setCurrentUser(user);
+      setIsLoggedIn(true);
+    }
+  }, []);
+
   const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
     const user: User = {
@@ -36,8 +66,44 @@ const Index = () => {
       email: registerForm.email,
       role: registerForm.role
     };
+    localStorage.setItem('currentUser', JSON.stringify(user));
     setCurrentUser(user);
     setIsLoggedIn(true);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('currentUser');
+    setCurrentUser(null);
+    setIsLoggedIn(false);
+  };
+
+  const handleCreateOrder = (e: React.FormEvent) => {
+    e.preventDefault();
+    toast({
+      title: "Заказ создан",
+      description: `Заказ на ${orderForm.quantity} шт. товара "${orderForm.product}" успешно оформлен`,
+    });
+    setShowOrderModal(false);
+    setOrderForm({ product: '', quantity: '', notes: '' });
+  };
+
+  const handleCreateSupply = (e: React.FormEvent) => {
+    e.preventDefault();
+    toast({
+      title: "Заявка создана",
+      description: `Заявка на поставку ${supplyForm.quantity} шт. товара "${supplyForm.product}" отправлена`,
+    });
+    setShowSupplyModal(false);
+    setSupplyForm({ product: '', quantity: '', deliveryDate: '', notes: '' });
+  };
+
+  const handleChangeStatus = () => {
+    toast({
+      title: "Статус изменен",
+      description: `Статус изменен на "${newStatus}"`,
+    });
+    setShowStatusModal(false);
+    setNewStatus('');
   };
 
   const mockData = {
@@ -48,9 +114,9 @@ const Index = () => {
       { label: 'Отгрузки сегодня', value: '31', icon: 'TrendingDown', change: '-3%' }
     ],
     products: [
-      { id: 1, name: 'Товар А', sku: 'SKU-001', category: 'Категория 1', quantity: 150, location: 'A-01-01' },
-      { id: 2, name: 'Товар Б', sku: 'SKU-002', category: 'Категория 2', quantity: 75, location: 'A-02-03' },
-      { id: 3, name: 'Товар В', sku: 'SKU-003', category: 'Категория 1', quantity: 200, location: 'B-01-05' }
+      { id: 1, name: 'Товар А', sku: 'SKU-001', category: 'Категория 1', quantity: 150, location: 'A-01-01', price: 1200 },
+      { id: 2, name: 'Товар Б', sku: 'SKU-002', category: 'Категория 2', quantity: 75, location: 'A-02-03', price: 850 },
+      { id: 3, name: 'Товар В', sku: 'SKU-003', category: 'Категория 1', quantity: 200, location: 'B-01-05', price: 2100 }
     ],
     orders: [
       { id: 1, number: 'ORD-001', customer: 'Клиент А', status: 'В обработке', items: 5, date: '2024-11-13' },
@@ -82,6 +148,8 @@ const Index = () => {
   };
 
   const canEdit = currentUser?.role === 'operator';
+  const isBuyer = currentUser?.role === 'buyer';
+  const isSupplier = currentUser?.role === 'supplier';
 
   if (!isLoggedIn) {
     return (
@@ -214,7 +282,7 @@ const Index = () => {
                 </Badge>
               </div>
             </div>
-            <Button variant="outline" className="w-full" onClick={() => setIsLoggedIn(false)}>
+            <Button variant="outline" className="w-full" onClick={handleLogout}>
               <Icon name="LogOut" size={16} className="mr-2" />
               Выйти
             </Button>
@@ -290,7 +358,7 @@ const Index = () => {
               <div className="flex justify-between items-center">
                 <div>
                   <h2 className="text-3xl font-bold">Товары</h2>
-                  <p className="text-muted-foreground mt-1">Управление номенклатурой</p>
+                  <p className="text-muted-foreground mt-1">Каталог доступных товаров</p>
                 </div>
                 {canEdit && (
                   <Button>
@@ -300,40 +368,44 @@ const Index = () => {
                 )}
               </div>
 
-              <Card>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Наименование</TableHead>
-                      <TableHead>Артикул</TableHead>
-                      <TableHead>Категория</TableHead>
-                      <TableHead>Количество</TableHead>
-                      <TableHead>Ячейка</TableHead>
-                      {canEdit && <TableHead>Действия</TableHead>}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {mockData.products.map((product) => (
-                      <TableRow key={product.id}>
-                        <TableCell className="font-medium">{product.name}</TableCell>
-                        <TableCell>{product.sku}</TableCell>
-                        <TableCell>{product.category}</TableCell>
-                        <TableCell>{product.quantity}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{product.location}</Badge>
-                        </TableCell>
-                        {canEdit && (
-                          <TableCell>
-                            <Button variant="ghost" size="sm">
-                              <Icon name="Edit" size={16} />
-                            </Button>
-                          </TableCell>
-                        )}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </Card>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {mockData.products.map((product) => (
+                  <Card key={product.id} className="p-6 hover-scale">
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h3 className="font-semibold text-lg">{product.name}</h3>
+                          <p className="text-sm text-muted-foreground">{product.sku}</p>
+                        </div>
+                        <Badge variant="outline">{product.category}</Badge>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">В наличии:</span>
+                          <span className="font-medium">{product.quantity} шт.</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Ячейка:</span>
+                          <span className="font-medium">{product.location}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Цена:</span>
+                          <span className="font-medium">{product.price} ₽</span>
+                        </div>
+                      </div>
+                      {isBuyer && (
+                        <Button className="w-full" onClick={() => {
+                          setOrderForm({ ...orderForm, product: product.name });
+                          setShowOrderModal(true);
+                        }}>
+                          <Icon name="ShoppingCart" size={16} className="mr-2" />
+                          Заказать
+                        </Button>
+                      )}
+                    </div>
+                  </Card>
+                ))}
+              </div>
             </div>
           )}
 
@@ -344,10 +416,10 @@ const Index = () => {
                   <h2 className="text-3xl font-bold">Приёмка</h2>
                   <p className="text-muted-foreground mt-1">Регистрация поступлений</p>
                 </div>
-                {canEdit && (
-                  <Button>
+                {isSupplier && (
+                  <Button onClick={() => setShowSupplyModal(true)}>
                     <Icon name="Plus" size={16} className="mr-2" />
-                    Новая приёмка
+                    Создать заявку на поставку
                   </Button>
                 )}
               </div>
@@ -378,7 +450,10 @@ const Index = () => {
                         <TableCell>{receipt.date}</TableCell>
                         {canEdit && (
                           <TableCell>
-                            <Button variant="ghost" size="sm">
+                            <Button variant="ghost" size="sm" onClick={() => {
+                              setSelectedItem(receipt);
+                              setShowStatusModal(true);
+                            }}>
                               <Icon name="Edit" size={16} />
                             </Button>
                           </TableCell>
@@ -398,12 +473,6 @@ const Index = () => {
                   <h2 className="text-3xl font-bold">Отгрузка</h2>
                   <p className="text-muted-foreground mt-1">Управление отгрузками</p>
                 </div>
-                {canEdit && (
-                  <Button>
-                    <Icon name="Plus" size={16} className="mr-2" />
-                    Новая отгрузка
-                  </Button>
-                )}
               </div>
 
               <Card>
@@ -430,7 +499,10 @@ const Index = () => {
                         <TableCell>{shipment.date}</TableCell>
                         {canEdit && (
                           <TableCell>
-                            <Button variant="ghost" size="sm">
+                            <Button variant="ghost" size="sm" onClick={() => {
+                              setSelectedItem(shipment);
+                              setShowStatusModal(true);
+                            }}>
                               <Icon name="Edit" size={16} />
                             </Button>
                           </TableCell>
@@ -499,7 +571,6 @@ const Index = () => {
                       <TableHead>Статус</TableHead>
                       <TableHead>Прогресс</TableHead>
                       <TableHead>Дата</TableHead>
-                      {canEdit && <TableHead>Действия</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -524,13 +595,6 @@ const Index = () => {
                           </div>
                         </TableCell>
                         <TableCell>{inv.date}</TableCell>
-                        {canEdit && (
-                          <TableCell>
-                            <Button variant="ghost" size="sm">
-                              <Icon name="Edit" size={16} />
-                            </Button>
-                          </TableCell>
-                        )}
                       </TableRow>
                     ))}
                   </TableBody>
@@ -546,12 +610,6 @@ const Index = () => {
                   <h2 className="text-3xl font-bold">Заказы</h2>
                   <p className="text-muted-foreground mt-1">Управление заказами</p>
                 </div>
-                {currentUser?.role === 'buyer' && (
-                  <Button>
-                    <Icon name="Plus" size={16} className="mr-2" />
-                    Новый заказ
-                  </Button>
-                )}
               </div>
 
               <Card>
@@ -578,7 +636,10 @@ const Index = () => {
                         <TableCell>{order.date}</TableCell>
                         {canEdit && (
                           <TableCell>
-                            <Button variant="ghost" size="sm">
+                            <Button variant="ghost" size="sm" onClick={() => {
+                              setSelectedItem(order);
+                              setShowStatusModal(true);
+                            }}>
                               <Icon name="Edit" size={16} />
                             </Button>
                           </TableCell>
@@ -598,12 +659,6 @@ const Index = () => {
                   <h2 className="text-3xl font-bold">Контрагенты</h2>
                   <p className="text-muted-foreground mt-1">Клиенты и поставщики</p>
                 </div>
-                {canEdit && (
-                  <Button>
-                    <Icon name="Plus" size={16} className="mr-2" />
-                    Добавить контрагента
-                  </Button>
-                )}
               </div>
 
               <Card>
@@ -614,7 +669,6 @@ const Index = () => {
                       <TableHead>Тип</TableHead>
                       <TableHead>Контакт</TableHead>
                       <TableHead>Заказов</TableHead>
-                      {canEdit && <TableHead>Действия</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -626,13 +680,6 @@ const Index = () => {
                         </TableCell>
                         <TableCell>{contractor.contact}</TableCell>
                         <TableCell>{contractor.orders}</TableCell>
-                        {canEdit && (
-                          <TableCell>
-                            <Button variant="ghost" size="sm">
-                              <Icon name="Edit" size={16} />
-                            </Button>
-                          </TableCell>
-                        )}
                       </TableRow>
                     ))}
                   </TableBody>
@@ -674,6 +721,90 @@ const Index = () => {
           )}
         </main>
       </div>
+
+      <Dialog open={showOrderModal} onOpenChange={setShowOrderModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Оформление заказа</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreateOrder} className="space-y-4">
+            <div>
+              <Label>Товар</Label>
+              <Input value={orderForm.product} onChange={(e) => setOrderForm({ ...orderForm, product: e.target.value })} required />
+            </div>
+            <div>
+              <Label>Количество</Label>
+              <Input type="number" value={orderForm.quantity} onChange={(e) => setOrderForm({ ...orderForm, quantity: e.target.value })} required />
+            </div>
+            <div>
+              <Label>Примечания</Label>
+              <Textarea value={orderForm.notes} onChange={(e) => setOrderForm({ ...orderForm, notes: e.target.value })} />
+            </div>
+            <DialogFooter>
+              <Button type="submit">Оформить заказ</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showSupplyModal} onOpenChange={setShowSupplyModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Заявка на поставку</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreateSupply} className="space-y-4">
+            <div>
+              <Label>Товар</Label>
+              <Input value={supplyForm.product} onChange={(e) => setSupplyForm({ ...supplyForm, product: e.target.value })} required />
+            </div>
+            <div>
+              <Label>Количество</Label>
+              <Input type="number" value={supplyForm.quantity} onChange={(e) => setSupplyForm({ ...supplyForm, quantity: e.target.value })} required />
+            </div>
+            <div>
+              <Label>Дата поставки</Label>
+              <Input type="date" value={supplyForm.deliveryDate} onChange={(e) => setSupplyForm({ ...supplyForm, deliveryDate: e.target.value })} required />
+            </div>
+            <div>
+              <Label>Примечания</Label>
+              <Textarea value={supplyForm.notes} onChange={(e) => setSupplyForm({ ...supplyForm, notes: e.target.value })} />
+            </div>
+            <DialogFooter>
+              <Button type="submit">Отправить заявку</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showStatusModal} onOpenChange={setShowStatusModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Изменить статус</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Новый статус</Label>
+              <Select value={newStatus} onValueChange={setNewStatus}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Выберите статус" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="В обработке">В обработке</SelectItem>
+                  <SelectItem value="Готов к отгрузке">Готов к отгрузке</SelectItem>
+                  <SelectItem value="Отгружено">Отгружено</SelectItem>
+                  <SelectItem value="В пути">В пути</SelectItem>
+                  <SelectItem value="Доставлен">Доставлен</SelectItem>
+                  <SelectItem value="Принято">Принято</SelectItem>
+                  <SelectItem value="Ожидается">Ожидается</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <Button onClick={handleChangeStatus}>Сохранить</Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
